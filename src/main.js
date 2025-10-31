@@ -577,7 +577,8 @@ class App {
     // Game controls
     document.getElementById('prevTime')?.addEventListener('click', () => this.changeTime(-1));
     document.getElementById('nextTime')?.addEventListener('click', () => this.changeTime(1));
-    document.getElementById('headerLeaveBtn')?.addEventListener('click', () => this.leaveGame());
+    document.getElementById('headerLeaveBtn')?.addEventListener('click', () => this.goHome());
+    document.querySelector('.header-title')?.addEventListener('click', () => this.goHome());
     document.getElementById('playAgain')?.addEventListener('click', () => this.playAgain());
     document.getElementById('backToBoard')?.addEventListener('click', () => this.backToBoard());
     document.getElementById('mainMenuBtn')?.addEventListener('click', () => this.mainMenuFromGameOver());
@@ -1219,6 +1220,37 @@ class App {
   hideHeaderLeaveBtn() {
     const leaveBtn = document.getElementById('headerLeaveBtn');
     leaveBtn.classList.add('hidden');
+  }
+
+  async goHome() {
+    // Check if we're in an active game
+    const gameScreen = document.getElementById('game');
+    const isInGame = gameScreen && !gameScreen.classList.contains('hidden');
+    
+    if (isInGame && this.game && !this.game.gameOver) {
+      // Show confirmation for active game
+      const confirmed = window.confirm('Are you sure you want to leave? Your game progress will be lost.');
+      if (!confirmed) {
+        return;
+      }
+    }
+    
+    // Leave the game/room and go to landing
+    await this.leaveToLanding();
+  }
+
+  async leaveToLanding() {
+    const wasAI = this.isAIGame;
+    const wasLocal = this.isLocalGame;
+    if (!wasAI && !wasLocal && this.appwrite.currentGameId) {
+      const gameDoc = await this.appwrite.getGame(this.appwrite.currentGameId);
+      if (gameDoc.status === 'waiting') {
+        await this.appwrite.deleteGame(this.appwrite.currentGameId);
+      }
+    }
+    
+    this.cleanup();
+    this.showAuth();
   }
 
   async leaveGame() {
