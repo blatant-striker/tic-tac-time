@@ -1,0 +1,38 @@
+<\!DOCTYPE html>
+<html>
+<head>
+  <title>Test</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; }
+    #test { width: 100vw; height: 100vh; background: #151515; }
+  </style>
+</head>
+<body>
+  <div id="test"></div>
+  <script type="module">
+    import * as THREE from 'three';
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0a);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(5, 5, 5);
+    camera.lookAt(0, 0, 0);
+    const renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('test').appendChild(renderer.domElement);
+    const light = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(light);
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true });
+    const cube = new THREE.Mesh(geometry, material);
+    scene.add(cube);
+    function animate() {
+      requestAnimationFrame(animate);
+      cube.rotation.x += 0.01;
+      cube.rotation.y += 0.01;
+      renderer.render(scene, camera);
+    }
+    animate();
+    console.log('Test working\!');
+  </script>
+</body>
+</html>
