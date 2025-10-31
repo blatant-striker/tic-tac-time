@@ -51,7 +51,8 @@ class App {
             const host = (lb.host?.name || 'player').toLowerCase();
             const id = String(lb.id || '').toLowerCase();
             const mode = String(lb.gameMode || '').toLowerCase();
-            return host.includes(q) || id.includes(q) || mode.includes(q);
+            const roomName = String(lb.roomName || '').toLowerCase();
+            return host.includes(q) || id.includes(q) || mode.includes(q) || roomName.includes(q);
           })
         : list;
       filtered.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
@@ -116,10 +117,28 @@ class App {
     // Check if user is logged in
     const user = await this.auth.getCurrentUser();
     
-    if (user) {
-      this.showMainMenu();
+    // Check for room URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
+    
+    if (roomId) {
+      // Store room ID for later if user needs to login first
+      sessionStorage.setItem('pending_room_join', roomId);
+      
+      if (user) {
+        // User is logged in, attempt to join room directly
+        await this.handleDirectRoomJoin(roomId);
+      } else {
+        // User not logged in, show login and they'll be redirected after
+        this.showAuth();
+        this.showToast('Please login to join this room', 'info');
+      }
     } else {
-      this.showAuth();
+      if (user) {
+        this.showMainMenu();
+      } else {
+        this.showAuth();
+      }
     }
 
     this.setupEventListeners();
@@ -273,7 +292,15 @@ class App {
     if (result.success) {
       this.hideAuthModal();
       this.showToast('Welcome back!', 'success');
-      this.showMainMenu();
+      
+      // Check for pending room join
+      const pendingRoomId = sessionStorage.getItem('pending_room_join');
+      if (pendingRoomId) {
+        sessionStorage.removeItem('pending_room_join');
+        await this.handleDirectRoomJoin(pendingRoomId);
+      } else {
+        this.showMainMenu();
+      }
     } else {
       this.showToast('Login failed: ' + result.error, 'error');
     }
@@ -296,7 +323,15 @@ class App {
     if (result.success) {
       this.hideAuthModal();
       this.showToast('Account created successfully!', 'success');
-      this.showMainMenu();
+      
+      // Check for pending room join
+      const pendingRoomId = sessionStorage.getItem('pending_room_join');
+      if (pendingRoomId) {
+        sessionStorage.removeItem('pending_room_join');
+        await this.handleDirectRoomJoin(pendingRoomId);
+      } else {
+        this.showMainMenu();
+      }
     } else {
       this.showToast(result.error, 'error');
       if (result.shouldLogin) {
@@ -586,7 +621,48 @@ class App {
     }
   }
 
-  async joinLobby(lobbyId, providedPassword = '') {
+  async handleDirectRoomJoin(roomId) {
+    try {
+      // Clear URL parameter
+      window.history.replaceState({}, '', window.location.pathname);
+      
+      // Fetch room details
+      const doc = await this.appwrite.getGame(roomId);
+      if (!doc) {
+        this.showToast('Room not found', 'error');
+        this.showMainMenu();
+        return;
+      }
+      
+      if (doc.status !== 'waiting' && doc.status !== 'ready') {
+        this.showToast('This room is no longer available', 'error');
+        this.showMainMenu();
+        return;
+      }
+      
+      // Check if password protected
+      if (doc.passwordHash) {
+        const pwd = window.prompt('This room is password protected. Enter password:') || '';
+        const enteredHash = pwd ? await this.sha256(pwd) : '';
+        if (enteredHash !== doc.passwordHash) {
+          this.showToast('Incorrect password', 'error');
+          this.showMainMenu();
+          return;
+        }
+      }
+      
+      // Set game mode based on room
+      this.currentGameMode = doc.gameMode;
+      
+      // Join the room
+      await this.joinLobby(roomId, null);
+    } catch (error) {
+      this.showToast('Failed to join room: ' + error.message, 'error');
+      this.showMainMenu();
+    }
+  }
+
+  async joinLobby(lobbyId, providedPassword = null) {
     try {
       // Enforce auth before joining
       if (!this.auth.isLoggedIn()) { this.showAuthModal('login'); return; }

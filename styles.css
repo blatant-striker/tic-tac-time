@@ -751,6 +751,13 @@ body {
   gap: 0.25rem;
 }
 
+.lobby-room-name {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-bright);
+  margin-bottom: 0.25rem;
+}
+
 .lobby-host {
   font-weight: 500;
   color: var(--text);

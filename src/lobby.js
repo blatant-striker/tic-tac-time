@@ -44,9 +44,11 @@ export class Lobby {
         .map(game => ({
           id: game.$id,
           gameMode: game.gameMode,
-          host: { name: 'Player' },
+          roomName: game.roomName || '',
+          host: { name: game.player1Name || 'Player' },
           createdAt: new Date(game.$createdAt).getTime(),
-          updatedAt: new Date(game.$updatedAt).getTime()
+          updatedAt: new Date(game.$updatedAt).getTime(),
+          hasPassword: !!game.passwordHash
         }));
 
       return lobbies;

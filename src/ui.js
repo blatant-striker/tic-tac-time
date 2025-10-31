@@ -148,10 +148,15 @@ export class UI {
     lobbies.forEach(lobby => {
       const lobbyItem = document.createElement('div');
       lobbyItem.className = 'lobby-item';
+      const roomName = lobby.roomName ? `<div class="lobby-room-name">🏠 ${lobby.roomName}</div>` : '';
+      const passwordIcon = lobby.hasPassword ? '🔒 ' : '';
       lobbyItem.innerHTML = `
         <div class="lobby-info">
-          <span class="lobby-host">🎮 ${lobby.host?.name || 'Player'}</span>
-          <span class="lobby-mode">${lobby.gameMode === 'time' ? '⏰ Time' : '🎯 Normal'}</span>
+          ${roomName}
+          <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <span class="lobby-host">👤 Created by: ${lobby.host?.name || 'Player'}</span>
+            <span class="lobby-mode">${passwordIcon}${lobby.gameMode === 'time' ? '⏰ Time' : '🎯 Normal'}</span>
+          </div>
         </div>
         <button class="btn btn-primary btn-small" data-lobby-id="${lobby.id}">Join</button>
       `;
