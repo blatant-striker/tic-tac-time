@@ -413,7 +413,7 @@ copies or substantial portions of the Software.
 
 ### ⭐ Star this repository if you enjoyed the game!
 
-Made with ❤️ and ☕ by passionate developers
+Made with ❤️ and ☕ by Chaitanya Kashyap
 
 [⬆ Back to Top](#-tic-tac-time)
 
