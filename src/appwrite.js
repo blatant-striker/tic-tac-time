@@ -14,6 +14,28 @@ export class AppwriteService {
     this.unsubscribe = null;
   }
 
+  async resetForRematch(gameMode) {
+    if (!this.currentGameId) return;
+    try {
+      const updateData = {
+        board: JSON.stringify([]),
+        currentPlayer: 'X',
+        currentTime: gameMode === 'time' ? 1 : 0,
+        winner: null,
+        status: 'ready'
+      };
+      return await this.databases.updateDocument(
+        this.databaseId,
+        this.collectionId,
+        this.currentGameId,
+        updateData
+      );
+    } catch (error) {
+      console.error('Failed to reset for rematch:', error);
+      throw error;
+    }
+  }
+
   async updateStatus(status) {
     if (!this.currentGameId) return;
     try {
@@ -58,7 +80,8 @@ export class AppwriteService {
           player2: null,
           currentTime: gameMode === 'time' ? 1 : 0,
           ...(options.passwordHash ? { passwordHash: options.passwordHash } : {}),
-          ...(options.roomName ? { roomName: options.roomName } : {})
+          ...(options.roomName ? { roomName: options.roomName } : {}),
+          ...(options.player1Name ? { player1Name: options.player1Name } : {})
         }
       );
       
@@ -70,7 +93,7 @@ export class AppwriteService {
     }
   }
 
-  async joinGame(gameId) {
+  async joinGame(gameId, player2Name = null) {
     try {
       const game = await this.databases.getDocument(
         this.databaseId,
@@ -86,14 +109,20 @@ export class AppwriteService {
         throw new Error('Cannot join your own game');
       }
 
+      const updateData = {
+        player2: this.playerId,
+        status: 'ready'
+      };
+      
+      if (player2Name) {
+        updateData.player2Name = player2Name;
+      }
+
       const updated = await this.databases.updateDocument(
         this.databaseId,
         this.collectionId,
         gameId,
-        {
-          player2: this.playerId,
-          status: 'ready'
-        }
+        updateData
       );
 
       this.currentGameId = gameId;
@@ -104,7 +133,7 @@ export class AppwriteService {
     }
   }
 
-  async findAvailableGame(gameMode) {
+  async findAvailableGame(gameMode, playerName = null) {
     try {
       const response = await this.databases.listDocuments(
         this.databaseId,
@@ -119,10 +148,10 @@ export class AppwriteService {
       );
 
       if (availableGame) {
-        return await this.joinGame(availableGame.$id);
+        return await this.joinGame(availableGame.$id, playerName);
       }
 
-      return await this.createGame(gameMode);
+      return await this.createGame(gameMode, { player1Name: playerName });
     } catch (error) {
       console.error('Failed to find/create game:', error);
       throw error;

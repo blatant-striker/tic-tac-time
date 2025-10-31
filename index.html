@@ -207,6 +207,18 @@
             <input id="roomLink" class="input" readonly>
             <button id="copyRoomLink" class="btn btn-secondary btn-small">Copy Link</button>
           </div>
+          <div id="roomPlayers" style="margin: 1.5rem 0; padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-weight: 600; color: #4CAF50;">🎮 Host:</span>
+                <span id="player1Name" style="color: var(--text-bright);">Waiting...</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-weight: 600; color: #2196F3;">👤 Guest:</span>
+                <span id="player2Name" style="color: var(--text-dim);">Waiting for opponent...</span>
+              </div>
+            </div>
+          </div>
           <p class="loading">Waiting for opponent...</p>
         </div>
         <button id="startGame" class="btn btn-primary hidden">Start</button>
@@ -229,6 +241,11 @@
       </div>
 
       <div id="canvas-container"></div>
+      
+      <!-- View-Only Restart Bar (shown after Back to Board) -->
+      <div id="viewOnlyBar" class="hidden" style="position: absolute; left: 0; right: 0; bottom: 18px; display: flex; justify-content: center; pointer-events: none;">
+        <button id="restartFromView" class="btn btn-primary" style="pointer-events: auto;">Play Again</button>
+      </div>
       
       <!-- Move Confirmation Panel -->
       <div id="confirmPanel" class="confirm-panel hidden">
@@ -255,6 +272,10 @@
       <div class="game-over-content">
         <h2 id="winnerText"></h2>
         <button id="playAgain" class="btn btn-primary">Play Again</button>
+        <div style="height: 0.5rem;"></div>
+        <button id="backToBoard" class="btn btn-secondary">Back to Board (View Only)</button>
+        <div style="height: 0.5rem;"></div>
+        <button id="mainMenuBtn" class="btn btn-secondary">Main Menu</button>
       </div>
     </div>
   </div>

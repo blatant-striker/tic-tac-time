@@ -84,7 +84,8 @@ class App {
       }
 
       const roomName = rn && rn.value ? rn.value.trim().slice(0, 40) : '';
-      const gameDoc = await this.appwrite.createGame(this.currentGameMode, { passwordHash, roomName });
+      const player1Name = this.auth.getUserName();
+      const gameDoc = await this.appwrite.createGame(this.currentGameMode, { passwordHash, roomName, player1Name });
       this.mySymbol = this.appwrite.getPlayerSymbol(gameDoc);
 
       this.appwrite.subscribeToGame(gameDoc.$id, (payload) => {
@@ -93,13 +94,8 @@ class App {
 
       const roomCode = gameDoc.$id;
       const roomLink = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
-      if (gameDoc.roomName) {
-        const waiting = document.querySelector('#room .loading');
-        if (waiting) {
-          waiting.textContent = `Waiting for opponent in "${gameDoc.roomName}"...`;
-        }
-      }
       this.ui.showRoom(roomCode, roomLink);
+      this.updateRoomUI(gameDoc);
     } catch (error) {
       this.showToast('Failed to create room: ' + error.message, 'error');
       this.ui.showLobby();
@@ -548,6 +544,9 @@ class App {
     document.getElementById('nextTime')?.addEventListener('click', () => this.changeTime(1));
     document.getElementById('headerLeaveBtn')?.addEventListener('click', () => this.leaveGame());
     document.getElementById('playAgain')?.addEventListener('click', () => this.playAgain());
+    document.getElementById('backToBoard')?.addEventListener('click', () => this.backToBoard());
+    document.getElementById('mainMenuBtn')?.addEventListener('click', () => this.mainMenuFromGameOver());
+    document.getElementById('restartFromView')?.addEventListener('click', () => this.playAgain());
     
     // Confirmation controls
     document.getElementById('confirmMove')?.addEventListener('click', () => this.confirmPendingMove());
@@ -660,6 +659,7 @@ class App {
     
     this.game = new Game(this.currentGameMode);
     this.ui.showGame(this.currentGameMode);
+    this.hideViewOnlyBar();
     this.showHeaderLeaveBtn();
     
     const container = this.ui.getCanvasContainer();
@@ -687,6 +687,7 @@ class App {
 
     this.game = new Game(this.currentGameMode);
     this.ui.showGame(this.currentGameMode);
+    this.hideViewOnlyBar();
     this.showHeaderLeaveBtn();
 
     const container = this.ui.getCanvasContainer();
@@ -748,6 +749,7 @@ class App {
     this.game.currentTime = gameDoc.currentTime;
 
     this.ui.showGame(gameDoc.gameMode);
+    this.hideViewOnlyBar();
     this.showHeaderLeaveBtn();
 
     const container = this.ui.getCanvasContainer();
@@ -894,6 +896,7 @@ class App {
     if (result.winner) {
       if (result.winLine) {
         this.renderer.drawWinLine(result.winLine);
+        this.renderer.highlightWinningCells(result.winLine);
       }
       this.onGameEnd(result.winner);
       
@@ -917,6 +920,7 @@ class App {
         if (aiMove && aiMove.winner) {
           if (aiMove.winLine) {
             this.renderer.drawWinLine(aiMove.winLine);
+            this.renderer.highlightWinningCells(aiMove.winLine);
           }
           this.onGameEnd(aiMove.winner);
         } else {
@@ -1050,9 +1054,78 @@ class App {
   onGameEnd(winner) {
     this.stopTimer();
     this.hideHeaderLeaveBtn();
+    this.hideViewOnlyBar();
+    // Compute and draw win visuals if available (multiplayer path)
+    try {
+      if (winner && winner !== 'draw' && this.game && this.renderer) {
+        const res = this.game.checkWin?.();
+        if (res && res.winner && Array.isArray(res.line)) {
+          this.renderer.drawWinLine(res.line);
+          this.renderer.highlightWinningCells(res.line);
+        }
+      }
+    } catch {}
+    const scenarioText = this.getWinScenarioText(winner);
     setTimeout(() => {
-      this.ui.showGameOver(winner, this.mySymbol);
+      this.ui.showGameOver(winner, this.mySymbol, scenarioText);
+      // Update Play Again button label based on mode
+      const playBtn = document.getElementById('playAgain');
+      if (playBtn) {
+        if (this.isAIGame || this.isLocalGame) playBtn.textContent = 'Play Again';
+        else playBtn.textContent = 'Ready';
+      }
     }, 1000);
+  }
+
+  getWinScenarioText(winner) {
+    try {
+      if (!this.game || !winner || winner === 'draw') return null;
+      const res = this.game.checkWin?.();
+      const line = res?.line;
+      if (!Array.isArray(line) || line.length < 2) return `${winner} wins!`;
+      const p0 = line[0];
+      const p1 = line[1];
+      const dx = (p1[0] - p0[0]) || 0;
+      const dy = (p1[1] - p0[1]) || 0;
+      const dz = (p1[2] - p0[2]) || 0;
+      const dt = (p1[3] - p0[3]) || 0;
+      const spatial = Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 0;
+      if (dt !== 0 && !spatial) return `${winner} wins across time!`;
+      if (dt !== 0 && spatial) return `${winner} wins across space and time!`;
+      return `${winner} wins in space!`;
+    } catch {
+      return `${winner} wins!`;
+    }
+  }
+
+  backToBoard() {
+    // Hide game over overlay but keep board visible for free viewing
+    const overlay = document.getElementById('gameOver');
+    if (overlay) overlay.classList.add('hidden');
+    // Re-show leave button so player can exit
+    this.showHeaderLeaveBtn();
+    // Show view-only restart bar with appropriate label
+    const bar = document.getElementById('viewOnlyBar');
+    const btn = document.getElementById('restartFromView');
+    if (bar && btn) {
+      btn.textContent = (this.isAIGame || this.isLocalGame) ? 'Play Again' : 'Ready';
+      bar.classList.remove('hidden');
+    }
+    // Ensure win visuals persist
+    try {
+      if (this.game?.winner && this.game.winner !== 'draw' && this.renderer) {
+        const res = this.game.checkWin?.();
+        if (res && res.winner && Array.isArray(res.line)) {
+          this.renderer.drawWinLine(res.line);
+          this.renderer.highlightWinningCells(res.line);
+        }
+      }
+    } catch {}
+  }
+
+  hideViewOnlyBar() {
+    const bar = document.getElementById('viewOnlyBar');
+    if (bar) bar.classList.add('hidden');
   }
 
   showHeaderLeaveBtn() {
@@ -1102,6 +1175,51 @@ class App {
   }
 
   playAgain() {
+    // Single/local: restart same mode immediately
+    if (this.isAIGame) {
+      const gm = this.currentGameMode;
+      const dif = this.aiDifficulty;
+      this.cleanup();
+      this.gameMode = 'single';
+      this.aiDifficulty = dif;
+      this.currentGameMode = gm;
+      this.startSinglePlayerGame();
+      return;
+    }
+    if (this.isLocalGame) {
+      const gm = this.currentGameMode;
+      this.cleanup();
+      this.gameMode = 'local';
+      this.currentGameMode = gm;
+      this.startLocalMultiplayerGame();
+      return;
+    }
+
+    // Multiplayer: mark ready for rematch and return to room
+    (async () => {
+      try {
+        await this.appwrite.resetForRematch(this.currentGameMode);
+      } catch (e) {
+        this.showToast('Failed to set ready for rematch', 'error');
+      }
+      // Tear down renderer only, keep subscription
+      if (this.renderer) {
+        this.renderer.destroy();
+        this.renderer = null;
+      }
+      this.game = null;
+      // Show waiting room again
+      const roomCode = this.appwrite.currentGameId;
+      const roomLink = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+      this.ui.showRoom(roomCode, roomLink);
+      try {
+        const gameDoc = await this.appwrite.getGame(roomCode);
+        this.updateRoomUI(gameDoc);
+      } catch {}
+    })();
+  }
+
+  mainMenuFromGameOver() {
     this.cleanup();
     this.showMainMenu();
   }
@@ -1132,10 +1250,36 @@ class App {
     // Toggle Start button for host when player2 present and status is 'ready'
     const startBtn = document.getElementById('startGame');
     const waiting = document.querySelector('#room .loading');
+    const player1NameEl = document.getElementById('player1Name');
+    const player2NameEl = document.getElementById('player2Name');
+    
     const isHost = this.appwrite.playerId === gameDoc.player1;
     const hasGuest = !!gameDoc.player2;
+    
+    // Update player names
+    if (player1NameEl) {
+      player1NameEl.textContent = gameDoc.player1Name || 'Host';
+      player1NameEl.style.color = 'var(--text-bright)';
+    }
+    if (player2NameEl) {
+      if (hasGuest) {
+        player2NameEl.textContent = gameDoc.player2Name || 'Guest';
+        player2NameEl.style.color = 'var(--text-bright)';
+      } else {
+        player2NameEl.textContent = 'Waiting for opponent...';
+        player2NameEl.style.color = 'var(--text-dim)';
+      }
+    }
+    
     if (waiting) {
-      waiting.textContent = hasGuest ? (isHost ? 'Opponent joined. Ready to start.' : 'Waiting for host to start...') : 'Waiting for opponent...';
+      const roomName = gameDoc.roomName ? ` in "${gameDoc.roomName}"` : '';
+      if (hasGuest) {
+        waiting.textContent = isHost 
+          ? `${gameDoc.player2Name || 'Opponent'} joined. Ready to start!` 
+          : 'Waiting for host to start...';
+      } else {
+        waiting.textContent = `Waiting for opponent${roomName}...`;
+      }
     }
     if (startBtn) {
       if (isHost && hasGuest && gameDoc.status === 'ready') {

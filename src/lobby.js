@@ -62,7 +62,8 @@ export class Lobby {
     }
 
     try {
-      const game = await this.appwrite.joinGame(lobbyId);
+      const player2Name = this.auth.getUserName();
+      const game = await this.appwrite.joinGame(lobbyId, player2Name);
       return game;
     } catch (error) {
       throw new Error('Failed to join lobby: ' + error.message);

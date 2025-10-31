@@ -76,11 +76,13 @@ export class UI {
   }
 
 
-  showGameOver(winner, mySymbol) {
+  showGameOver(winner, mySymbol, scenarioText) {
     this.elements.gameOver.classList.remove('hidden');
     
     if (winner === 'draw') {
       this.elements.winnerText.textContent = "🤝 It's a Draw!";
+    } else if (scenarioText) {
+      this.elements.winnerText.textContent = scenarioText;
     } else if (winner === mySymbol) {
       this.elements.winnerText.textContent = "🎉 You Win!";
     } else {

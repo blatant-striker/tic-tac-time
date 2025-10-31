@@ -11,6 +11,8 @@ export class Renderer {
     this.cellMeshes = [];
     this.markerMeshes = [];
     this.winLineMesh = null;
+    this.winLineRaw = null;
+    this.winCells = null;
     this.isAnimating = false;
     this.distance = 8;
     this.initialDistance = 4;
@@ -34,6 +36,7 @@ export class Renderer {
     this.baseBackground = new THREE.Color(0x0a0a0a);
     this.tintOverlayEl = null;
     this.timeOverlayEl = null;
+    this.winOverlayEl = null;
 
     this.updateCurrentUpVector();
     this.init();
@@ -154,6 +157,22 @@ export class Renderer {
     oS.display = 'none';
     this.timeOverlayEl.textContent = 'Time traveling…';
     this.container.appendChild(this.timeOverlayEl);
+
+    // Win line overlay (screen-space horizontal line)
+    this.winOverlayEl = document.createElement('div');
+    const wS = this.winOverlayEl.style;
+    wS.position = 'absolute';
+    wS.left = '0';
+    wS.top = '50%';
+    wS.width = '100%';
+    wS.height = '1px';
+    wS.background = '#ffe26b';
+    wS.boxShadow = '0 0 6px rgba(255,226,107,0.45)';
+    wS.opacity = '0.95';
+    wS.pointerEvents = 'none';
+    wS.zIndex = '13';
+    wS.display = 'none';
+    this.container.appendChild(this.winOverlayEl);
 
     // Lights
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -608,6 +627,10 @@ export class Renderer {
       this.highlightOpponentCell(x, y, z);
       this.pendingOpponentHighlight = null;
     }
+    if (this.game?.gameOver && this.winLineRaw) {
+      this.highlightWinningCells(this.winLineRaw);
+      this.drawWinLine(this.winLineRaw);
+    }
   }
 
   updateMarkers() {
@@ -684,32 +707,126 @@ export class Renderer {
   }
 
   drawWinLine(line) {
+    this.winLineRaw = line;
+    // Remove any previous 3D mesh line
     if (this.winLineMesh) {
       this.scene.remove(this.winLineMesh);
-      this.winLineMesh.geometry.dispose();
-      this.winLineMesh.material.dispose();
+      if (this.winLineMesh.geometry) this.winLineMesh.geometry.dispose();
+      if (this.winLineMesh.material) this.winLineMesh.material.dispose();
+      this.winLineMesh = null;
     }
 
     const spacing = 1.2;
     const gridSize = this.game.gridSize;
     const offset = -(gridSize - 1) * spacing / 2;
-
-    const points = line.map(([x, y, z]) => 
-      new THREE.Vector3(
-        offset + x * spacing,
-        offset + y * spacing,
-        offset + z * spacing
-      )
+    const cellToWorld = (x, y, z) => new THREE.Vector3(
+      offset + x * spacing,
+      offset + y * spacing,
+      offset + z * spacing
     );
 
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
-      color: 0xffff00,
-      linewidth: 5
-    });
+    if (!Array.isArray(line) || line.length === 0) {
+      if (this.winOverlayEl) this.winOverlayEl.style.display = 'none';
+      return;
+    }
 
-    this.winLineMesh = new THREE.Line(geometry, material);
-    this.scene.add(this.winLineMesh);
+    // Determine direction in space/time
+    const p0 = line[0];
+    const p1 = line[Math.min(1, line.length - 1)];
+    const dx = (p1[0] - p0[0]) || 0;
+    const dy = (p1[1] - p0[1]) || 0;
+    const dz = (p1[2] - p0[2]) || 0;
+    const dt = (p1[3] - p0[3]) || 0;
+
+    // Temporal-only line special handling
+    const temporalOnly = dx === 0 && dy === 0 && dz === 0 && dt !== 0;
+
+    let startWorld = null;
+    let endWorld = null;
+
+    if (temporalOnly) {
+      // Use a horizontal row across X at the winning cell's Y,Z
+      const tNow = this.game.currentTime;
+      // Find the entry matching current time; fallback to any
+      let match = line.find(p => p[3] === tNow) || line[Math.floor(line.length / 2)];
+      const cx = match[0];
+      const cy = match[1];
+      const cz = match[2];
+      let startX = 0;
+      let endX = gridSize - 1;
+      if (tNow === 0) { // past: right only from winning cell
+        startX = cx;
+        endX = gridSize - 1;
+      } else if (tNow === 2) { // future: left only from winning cell
+        startX = cx;
+        endX = 0;
+      } else { // present: both directions
+        startX = 0;
+        endX = gridSize - 1;
+      }
+      startWorld = cellToWorld(startX, cy, cz);
+      endWorld = cellToWorld(endX, cy, cz);
+
+      // For overlay we only need midpoint vertical position; no additional extension needed here
+    } else {
+      // Spatial line: extend to cube edges along direction (including diagonals)
+      // Base on p0 as anchor
+      const sx = p0[0], sy = p0[1], sz = p0[2];
+      const stepX = Math.sign(dx);
+      const stepY = Math.sign(dy);
+      const stepZ = Math.sign(dz);
+      // If any component is zero, we still compute bounds using the moving axes
+      const boundsFor = (s, d) => {
+        if (d > 0) return [(0 - s) / d, ((gridSize - 1) - s) / d];
+        if (d < 0) return [((gridSize - 1) - s) / d, (0 - s) / d];
+        // d == 0: no constraint from this axis
+        return [-Infinity, +Infinity];
+      };
+      const bx = boundsFor(sx, stepX);
+      const by = boundsFor(sy, stepY);
+      const bz = boundsFor(sz, stepZ);
+      const iMin = Math.max(bx[0], by[0], bz[0]);
+      const iMax = Math.min(bx[1], by[1], bz[1]);
+      const startXf = sx + iMin * stepX;
+      const startYf = sy + iMin * stepY;
+      const startZf = sz + iMin * stepZ;
+      const endXf = sx + iMax * stepX;
+      const endYf = sy + iMax * stepY;
+      const endZf = sz + iMax * stepZ;
+      startWorld = cellToWorld(startXf, startYf, startZf);
+      endWorld = cellToWorld(endXf, endYf, endZf);
+      // For overlay we only need midpoint vertical position
+    }
+    // Show/update overlay now
+    if (this.winOverlayEl) {
+      this.winOverlayEl.style.display = 'block';
+      this.updateWinOverlayPosition();
+    }
+  }
+
+  highlightWinningCells(line) {
+    this.winLineRaw = line;
+    const tNow = this.game.currentTime;
+    const targets = [];
+    for (const p of line) {
+      const [x, y, z, t] = p;
+      if (typeof t === 'number') {
+        if (t === tNow) targets.push(`${x},${y},${z}`);
+      } else {
+        targets.push(`${x},${y},${z}`);
+      }
+    }
+    this.winCells = new Set(targets);
+    this.cellMeshes.forEach(mesh => {
+      if (mesh.type === 'Mesh') {
+        const key = `${mesh.userData.x},${mesh.userData.y},${mesh.userData.z}`;
+        if (this.winCells.has(key)) {
+          mesh.material.opacity = 0.6;
+          mesh.material.emissiveIntensity = 1.0;
+          mesh.material.emissive.setHex(0xffb84d);
+        }
+      }
+    });
   }
 
   onClick(event) {
@@ -785,14 +902,15 @@ export class Renderer {
       }
     }
     
-    // Reset all cells (only meshes, not wireframes), except pending and highlighted cells
+    // Reset all cells (only meshes, not wireframes), except pending/self/opponent/winning cells
     this.cellMeshes.forEach(mesh => {
       if (mesh.type === 'Mesh' && mesh.material.opacity !== undefined) {
         // Skip pending/self/opponent highlighted cells - keep them
         const isPending = this.pendingCell && mesh.userData.x === this.pendingCell.x && mesh.userData.y === this.pendingCell.y && mesh.userData.z === this.pendingCell.z;
         const isSelf = this.selfCell && mesh.userData.x === this.selfCell.x && mesh.userData.y === this.selfCell.y && mesh.userData.z === this.selfCell.z;
         const isOpponent = this.opponentCell && mesh.userData.x === this.opponentCell.x && mesh.userData.y === this.opponentCell.y && mesh.userData.z === this.opponentCell.z;
-        if (isPending || isSelf || isOpponent) return;
+        const isWinning = this.winCells && this.winCells.has(`${mesh.userData.x},${mesh.userData.y},${mesh.userData.z}`);
+        if (isPending || isSelf || isOpponent || isWinning) return;
         mesh.material.opacity = 0.4;
         mesh.material.emissiveIntensity = 0.6;
       }
@@ -963,8 +1081,118 @@ export class Renderer {
     this.markerMeshes.forEach(marker => {
       marker.quaternion.copy(this.camera.quaternion);
     });
+    // Update win overlay position to stick to correct Y as camera moves
+    if (this.winLineRaw && this.winOverlayEl && this.winOverlayEl.style.display !== 'none') {
+      this.updateWinOverlayPosition();
+    }
     
     this.renderer.render(this.scene, this.camera);
+  }
+
+  updateWinOverlayPosition() {
+    if (!this.winLineRaw || !this.winOverlayEl) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const spacing = 1.2;
+    const gridSize = this.game.gridSize;
+    const offset = -(gridSize - 1) * spacing / 2;
+
+    const cellToWorld = (x, y, z) => new THREE.Vector3(
+      offset + x * spacing,
+      offset + y * spacing,
+      offset + z * spacing
+    );
+
+    const line = this.winLineRaw;
+    // Determine unique time slices represented in the win line
+    const timeVals = [];
+    for (const p of line) {
+      const tv = p && typeof p[3] === 'number' ? p[3] : null;
+      if (tv !== null) timeVals.push(tv);
+    }
+    const uniqueTimes = Array.from(new Set(timeVals));
+    const p0 = line[0];
+    const p1 = line[Math.min(1, line.length - 1)];
+    const dx = (p1[0] - p0[0]) || 0;
+    const dy = (p1[1] - p0[1]) || 0;
+    const dz = (p1[2] - p0[2]) || 0;
+    const dt = (p1[3] - p0[3]) || 0;
+    const temporalOnly = dx === 0 && dy === 0 && dz === 0 && dt !== 0;
+
+    // If spatial-only (single time slice) and we're not on that slice, hide overlay
+    if (this.game?.mode === 'time' && uniqueTimes.length === 1) {
+      const winTime = uniqueTimes[0];
+      if (this.game.currentTime !== winTime) {
+        this.winOverlayEl.style.display = 'none';
+        return;
+      }
+    }
+
+    let worldPoint;
+    if (temporalOnly) {
+      const tNow = this.game.currentTime;
+      const match = line.find(p => p[3] === tNow) || line[Math.floor(line.length / 2)];
+      worldPoint = cellToWorld(match[0], match[1], match[2]);
+    } else {
+      // Midpoint of first and last point for vertical alignment
+      const last = line[line.length - 1];
+      const a = cellToWorld(p0[0], p0[1], p0[2]);
+      const b = cellToWorld(last[0], last[1], last[2]);
+      worldPoint = a.clone().add(b).multiplyScalar(0.5);
+    }
+
+    const projected = worldPoint.clone().project(this.camera);
+    const sx = (projected.x * 0.5 + 0.5) * rect.width;
+    const sy = (-projected.y * 0.5 + 0.5) * rect.height;
+
+    const wS = this.winOverlayEl.style;
+    const thickness = 1; // px
+
+    // Width/left per time-slice rule for temporal wins; otherwise connect actual cells
+    if (temporalOnly) {
+      const tNow = this.game.currentTime;
+      wS.top = `${Math.max(0, Math.min(rect.height - thickness, sy - thickness / 2))}px`;
+      wS.transform = 'none';
+      wS.transformOrigin = 'left center';
+      
+      if (tNow === 0) {
+        // past: from center to right
+        wS.left = `${Math.max(0, Math.min(rect.width, sx))}px`;
+        wS.width = `${Math.max(0, rect.width - Math.max(0, Math.min(rect.width, sx)))}px`;
+      } else if (tNow === 2) {
+        // future: from left to center
+        wS.left = '0px';
+        wS.width = `${Math.max(0, Math.min(rect.width, sx))}px`;
+      } else {
+        // present: full width
+        wS.left = '0px';
+        wS.width = '100%';
+      }
+    } else {
+      // Spatial wins: draw line from first to last winning cell
+      const first = line[0];
+      const last = line[line.length - 1];
+      const firstWorld = cellToWorld(first[0], first[1], first[2]);
+      const lastWorld = cellToWorld(last[0], last[1], last[2]);
+      
+      const firstProj = firstWorld.clone().project(this.camera);
+      const lastProj = lastWorld.clone().project(this.camera);
+      
+      const x1 = (firstProj.x * 0.5 + 0.5) * rect.width;
+      const y1 = (-firstProj.y * 0.5 + 0.5) * rect.height;
+      const x2 = (lastProj.x * 0.5 + 0.5) * rect.width;
+      const y2 = (-lastProj.y * 0.5 + 0.5) * rect.height;
+      
+      const deltaX = x2 - x1;
+      const deltaY = y2 - y1;
+      const length = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      const angle = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+      
+      wS.left = `${x1}px`;
+      wS.top = `${y1}px`;
+      wS.width = `${length}px`;
+      wS.transform = `rotate(${angle}deg)`;
+      wS.transformOrigin = 'left center';
+    }
   }
 
   animateTimeCarousel(direction) {
@@ -1142,6 +1370,10 @@ export class Renderer {
             btn.style.pointerEvents = '';
           });
         }
+        if (this.winLineRaw) {
+          this.drawWinLine(this.winLineRaw);
+          this.highlightWinningCells(this.winLineRaw);
+        }
       }
     };
     step();
@@ -1218,6 +1450,10 @@ export class Renderer {
     if (this.timeOverlayEl && this.timeOverlayEl.parentNode === this.container) {
       this.container.removeChild(this.timeOverlayEl);
       this.timeOverlayEl = null;
+    }
+    if (this.winOverlayEl && this.winOverlayEl.parentNode === this.container) {
+      this.container.removeChild(this.winOverlayEl);
+      this.winOverlayEl = null;
     }
     if (this._onWindowMouseUp) {
       window.removeEventListener('mouseup', this._onWindowMouseUp);
