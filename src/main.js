@@ -28,7 +28,7 @@ class App {
     
     // Timer and confirmation
     this.turnTimer = null;
-    this.timeLeft = 15;
+    this.timeLeft = 30;
     this.pendingMove = null;
 
     this.init();
@@ -1019,7 +1019,7 @@ class App {
   startTimer() {
     this.stopTimer();
     if (this.isAIGame || this.isLocalGame) return; // No timer for single-player or local multiplayer
-    this.timeLeft = (this.game?.mode === 'time') ? 25 : 15;
+    this.timeLeft = (this.game?.mode === 'time') ? 60 : 30;
     this.updateTimerDisplay();
     
     const timerEl = document.getElementById('headerTimer');
@@ -1124,6 +1124,13 @@ class App {
     
     if (this.game.mode === 'time') {
       this.ui.updateTimeDisplay(this.game.currentTime);
+    }
+    
+    // Start timer on player's turn, stop on opponent's turn
+    if (isMyTurn) {
+      this.startTimer();
+    } else {
+      this.stopTimer();
     }
   }
 
