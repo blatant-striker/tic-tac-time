@@ -11,7 +11,7 @@
 [![Built with Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-[Live Demo](#) • [Features](#-features) • [Quick Start](#-quick-start) • [Game Modes](#-game-modes) • [Architecture](#-architecture)
+[Live Demo](https://tic-tac-time.appwrite.network) • [Features](#-features) • [Quick Start](#-quick-start) • [Game Modes](#-game-modes) • [Architecture](#-architecture)
 
 </div>
 
@@ -403,9 +403,9 @@ copies or substantial portions of the Software.
 
 ## 📧 Contact & Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/tic-tac-time/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/tic-tac-time/discussions)
-- **Email**: your.email@example.com
+- **Issues**: [GitHub Issues](https://github.com/blatant-striker/tic-tac-time/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/blatant-striker/tic-tac-time/discussions)
+- **Email**: blatantstriker@gmail.com
 
 ---
 
